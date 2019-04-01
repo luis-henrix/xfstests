@@ -1,0 +1,9 @@
+QA output created by 001
+# file: TEST_DIR/001
+ceph.quota.max_files="10"
+
+# file: TEST_DIR/001
+ceph.quota.max_files="9223372036854775807"
+
+touch: cannot touch 'TEST_DIR/001/4': Disk quota exceeded
+mkdir: cannot create directory 'TEST_DIR/001/5': Disk quota exceeded
