@@ -1,0 +1,70 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (c) 2019 SUSE LLC. All Rights Reserved.
+#
+# FS QA Test No. ceph/004
+#
+# Test bug found while testing copy_file_range
+# https://tracker.ceph.com/issues/37378
+#
+seq=`basename $0`
+seqres=$RESULT_DIR/$seq
+echo "QA output created by $seq"
+
+here=`pwd`
+tmp=/tmp/$$
+status=1    # failure is the default!
+trap "_cleanup; exit \$status" 0 1 2 3 15
+
+_cleanup()
+{
+	cd /
+	rm -rf $tmp.*
+}
+
+# get standard environment
+. common/rc
+. common/filter
+. common/attr
+
+# real QA test starts here
+_supported_fs generic
+_supported_os Linux
+
+_require_xfs_io_command "copy_range"
+_require_attrs
+_require_test
+
+workdir=$TEST_DIR/test-$seq
+rm -rf $workdir
+mkdir $workdir
+rm -f $seqres.full
+
+# Use 4M object size
+objsz=4194304
+file="$workdir/file-$objsz"
+dest="$workdir/dest-$objsz"
+touch $file $dest
+
+# object_size has to be a multiple of stripe_unit
+$SETFATTR_PROG -n ceph.file.layout \
+	-v "stripe_unit=$objsz stripe_count=1 object_size=$objsz" \
+	$file $dest
+
+# Create a 3 objects size files
+$XFS_IO_PROG -c "pwrite -S 0x61 0 $objsz" $file >> $seqres.full 2>&1
+$XFS_IO_PROG -c "pwrite -S 0x62 $objsz $objsz" $file >> $seqres.full 2>&1
+$XFS_IO_PROG -c "pwrite -S 0x63 $(($objsz * 2)) $objsz" $file >> $seqres.full 2>&1
+
+$XFS_IO_PROG -c "pwrite -S 0x64 0 $(($objsz * 3))" $dest >> $seqres.full 2>&1
+# Truncate the destination file
+$XFS_IO_PROG -c "truncate 0" $dest >> $seqres.full 2>&1
+
+# copy the whole file over
+$XFS_IO_PROG -c "copy_range -s 0 -d 0 -l $(($objsz * 3)) $file" "$dest"
+
+hexdump $dest
+
+#success, all done
+status=0
+exit
